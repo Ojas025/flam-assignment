@@ -1,0 +1,15 @@
+[project]
+name = "the-audit"
+version = "0.1.0"
+description = "Flam take-home submission: audit of REPORT_v0.md (tokenizer fertility + serving capacity)"
+requires-python = ">=3.11"
+dependencies = [
+    # baseline tokenizer (intern's fertility.py uses tiktoken "gpt2")
+    "tiktoken",
+    # multilingual/Indic-aware tokenizers for A3 (XLM-R, mT5, MuIL)
+    "transformers",
+    "sentencepiece", # XLM-R / mT5 use SentencePiece under the hood
+    # grapheme-cluster denominators for A3 (regex \X, UAX #29)
+    "regex",
+    "protobuf>=7.36.2",
+]
