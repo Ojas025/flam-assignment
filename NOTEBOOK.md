@@ -247,10 +247,61 @@ On FLORES-200:
 ---
 
 ## E7 - A2 - **final metrics**
-**Hypotheses:** 
-**Prediction:** 
-**Experiment:**
-**Result**
-**Verdict**
+**Hypotheses:** The corrected pipeline (whitespace collapse, preserved casing, `split()`, explicit baseline) will change every number REPORT_v0 printed from the same 10 lines, and the added denominators will disagree with each other — so v0's "two metrics agree → robust" was never a real check.
 
-<!--Run on FLORES-200 corpus-->
+**Prediction:**
+The five denominators give five different hin/eng ratios instead of v0's "agreeing" 5.89× / 7.0×.
+
+**Experiment:** Ran the corrected benchmark on the sample corpus — gpt2 (v0's tokenizer) plus muril, baseline eng, five denominators:
+
+`python partA/updated_fertility.py`
+
+`python partA/updated_fertility.py --baseline hin` (order-independence check)
+
+**Result:**
+Same 10 lines, changed numbers vs REPORT_v0 (gpt2, micro-averaged):
+
+| metric | REPORT_v0 | corrected |
+|---|---|---|
+| eng fertility (tok/word) | 1.27 | 1.2179 |
+| hin fertility (tok/word) | 7.45 | 7.5082 |
+| hin/eng fertility ratio | 5.89× | 6.16× |
+| eng tok/char | 0.226 | 0.2125 |
+| hin tok/char | 1.579 | 1.5848 |
+| tok/char ratio | 7.0× | 7.46× |
+
+Ratios v0 never reported (hin/eng):
+
+| denominator | gpt2 | muril |
+|---|---|---|
+| tok/word | 6.16× | 1.07× |
+| tok/graph | 11.11× | 1.92× |
+| tok/byte | 2.82× | 0.49× |
+| tok/seg (TPS) | 4.82× | 0.84× |
+| tok/cp | 7.46× | 1.29× |
+
+- Alignment check passed before any TPS was printed: 10 = 10 non-empty segments.
+- Baseline is a flag, not argument order: `--baseline hin` flips the table — gpt2 reports eng as 0.16× hin, the reciprocal of 6.16× (E5 fix confirmed).
+- Absolute tokens per sentence: gpt2 eng 9.50 vs hin 45.80; muril eng 9.10 vs hin 7.60.
+
+### Run 2 — FLORES-200: tokens per sentence for the Dravidian languages
+The sample corpus holds only English and Hindi, so it has no tokens-per-sentence figures for Kannada, Tamil, Telugu, or Malayalam — Dravidian cost can't be budgeted from it. Ran the same tool on FLORES (997 parallel sentences × 6 languages):
+
+`python partA/updated_fertility.py --corpus flores`
+
+Tokens per parallel sentence (TPS):
+
+| tokenizer | eng | hin | kan | tam | tel | mal |
+|---|---|---|---|---|---|---|
+| gpt2 | 25.82 | 192.40 | 350.13 | 398.26 | 336.44 | 390.62 |
+| muril | 26.44 | 30.74 | 28.03 | 27.87 | 32.13 | 30.95 |
+
+- TPS ratio vs English — gpt2: hin 7.45×, kan 13.56×, tam 15.43×, tel 13.03×, mal 15.13×.
+- Same six languages under muril: 1.16×, 1.06×, 1.05×, 1.22×, 1.17× — near parity across the board.
+- Alignment re-checked on this corpus: 997 = 997 segments in all six languages.
+
+**Verdict:**
+- Every cell of v0's sample table changes under the corrected pipeline: eng fertility 1.27 → 1.2179 (E2's predicted ~1.23 confirmed — v0 lowercased English) and tok/char 0.226 → 0.2125; hin moves under 1% (7.45 → 7.5082) because casing doesn't affect Devanagari.
+- v0's "two metrics agree (5.89× and 7.0×), so it's robust" collapses: on identical text the five denominators span 2.82× to 11.11×. Those two numbers were two ratios of the same token count, not independent measurements.
+- The routing number flips with the tokenizer: per sentence, Hindi costs 4.82× English on gpt2 but 0.84× on muril — cheaper than English. "Budget 6× for Hindi" is a property of gpt2 (E6), not of Hindi.
+- TPS is the denominator recommendation: it is the only one that holds content constant across languages, and Run 2 gives a per-sentence cost for every language — Dravidian budgets at 13–15× English on gpt2, or 1.05–1.22× on muril.
