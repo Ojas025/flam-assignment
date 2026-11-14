@@ -12,4 +12,5 @@ dependencies = [
     # grapheme-cluster denominators for A3 (regex \X, UAX #29)
     "regex",
     "protobuf>=7.36.2",
+    "httpx>=0.28.1",
 ]

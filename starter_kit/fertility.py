@@ -35,7 +35,6 @@ def load_tokenizer(spec: str):
         enc = tiktoken.get_encoding(spec)
         return enc.encode
 
-
 def read_lines(path: str):
     lines = []
     with open(path, "r", encoding="utf-8") as f:
@@ -48,30 +47,18 @@ def read_lines(path: str):
             lines.append(line)
     return lines
 
-
 def analyze(lines, encode):
     """Return (fertility, tokens_per_char) averaged over lines."""
     per_line_fertility = []
     per_line_tpc = []
-
-    total_tokens = 0, total_words = 0, total_chars = 0
-
     for line in lines:
         # lowercase so casing doesn't add noise to the comparison
-        # Is this confirmed or assumed?
         line = line.lower()
         tokens = encode(line)
-        words = line.split()
-
-        total_tokens += len(tokens)
-        total_words += len(words)
-        total_chars += len(line)
-
-        # per_line_fertility.append(len(tokens) / len(words))
-        # per_line_tpc.append(len(tokens) / chars)
-
-    fertility = total_tokens / total_words
-
+        words = line.split(" ")
+        chars = len(line)
+        per_line_fertility.append(len(tokens) / len(words))
+        per_line_tpc.append(len(tokens) / chars)
     n = len(per_line_fertility)
     return sum(per_line_fertility) / n, sum(per_line_tpc) / n
 
