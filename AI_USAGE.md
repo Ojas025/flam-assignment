@@ -3,3 +3,4 @@
 - I used the models in Opencode, wrote lots of duplicated code, unnecessary helper functions --- had to review and clean a lot of it.
 - For the `split() vs split(" ")` experiment, the agent confidently insisted on keeping whitespace normalization out of preprocessing for the sake of showing the delta in experiment results.
 - AI introduced a bug, by hardcoding `0` for `tpc delta` instead of actually calculating it.
+- For reports in Task B, all the calculations were done manually for better understanding, writing the findings and resulting report was done using AI.
