@@ -1,91 +1,85 @@
-# Task C
+# Task C — decision memo
 
-## Decision memo
+## Scenario
 
-**Scenario**: the product team wants our assistant's replies to sound casual and conversational in Hindi, Kannada, Tamil, Telugu, Bengali and Marathi — current outputs are too formal/textbook. 
-Three paths are on the table:
-- (a) an SFT pass on synthetic "casualized" response pairs
-- (b) a small (≤1B) inference-time rewriter model after the main model
-- (c) prompt-engineering only
+Make assistant replies sound casual in Hindi, Kannada, Tamil, Telugu, Bengali, and Marathi (today’s tone is too formal).
 
-**Constraints**: one A100-80GB for 2 weeks, one native-speaker reviewer
-(Hindi + Kannada only) for 10 h/week, launch review in 3 weeks, no
-external API budget.
+**Options**
 
----
+- (a) LoRA SFT on synthetic casual pairs
+- (b) Small (≤1B) rewriter at inference time
+- (c) Prompt engineering only
 
-### Assumptions made
-- The main model is FLM-4B-Instruct from `model_spec.md` (4.2B dense), we own the weights.
-- All synthetic data comes from our own models, since there is no API budget. Quality in Tamil, Telugu, Bengali and Marathi is unknown.
-- Training examples are (user prompt/context → casual response). The original formal response is retained for comparison and semantic auditing, not used as the SFT target.
-- No reviewer exists for ta/te/bn/mr, so I make no quality claim for them. Hindi/Kannada review does not transfer, and spoken Tamil/Telugu differ a lot from written forms.
-- Use BF16/FP16 base weights and LoRA rather than full-parameter fine-tuning.
+**Constraints**
 
----
+- 1× A100-80GB for 2 weeks
+- One native reviewer (Hindi + Kannada only), 10 h/week
+- Launch review in 3 weeks
+- No external API budget
 
-### Back-of-envelope arithmetic
+## Assumptions
 
-Training
-- LoRA is the safer choice on an 80GB A100, primarily for memory headroom, not because it is guaranteed to train faster.
-- Model memory: 4.2B * 2 =8.4GB of FP16/BF16 weights. This is comfortably below the A100-80GB capacity.
-- Generate 2000 synthetic pairs per language -> 12,000 pairs.
-- At an average of 600 tokens/pair (since indic tokenization is costly) -> 7.2M tokens per epoch
-- Trained for 3 epochs -> 7.2M * 3 -> 21.6M tokens at 
-- GPU budget -> 336 hours available
-- Total model parameters = 4.2 * 1e9
-	LoRA FLOPs per token:
-	- Forward Pass -> 2P
-	- Backward Pass -> 2P
-	- Gradient checkpointing (optional) -> 2P
-- Total FLOPs -> 6 * 4.2 * 1e9 -> `5.44 * 1e17`
-- A100 peak BF16 dense compute -> 312 TFLOPs
-- Model Flops Utilization (MFU) -> ~25%
-- Time = FLOPs / (peak * MFU) = `1.94 hours`, so 1-2 hours per run.
+- Base model: FLM-4B-Instruct (`model_spec.md`), 4.2B dense; we own the weights.
+- Synthetic data from our own models only. Quality for ta/te/bn/mr is unknown.
+- Training target: (prompt → casual reply). Keep the formal reply for audits, not as the SFT label.
+- No reviewer for ta/te/bn/mr — no quality claim there. Hindi/Kannada review does not transfer.
+- Train with BF16/FP16 + LoRA (not full fine-tune).
 
-Prompt
-- Few-short prompt per request -> ~1k tokens
-- A 1,000-token prompt would consume approximately 109 MiB of KV cache per active request at 114,688 bytes/token, but a 100-token instruction is only about 11 MiB.
-- If a short-style instruction is sufficient, this cost will be dropped.
+## Arithmetic
 
-Reviewer
-- 10 h/week × 3 weeks = 30 h. 
-- Pairwise ≈ 45 s (80/h); audit-and-fix ≈ 2 min (30/h)
-- Max ~1600 judgements -> 13.3% of the data.
+### Training
 
-The scarce resource / bottleneck, is reviewer time and not GPU.	
+- LoRA preferred for memory headroom on the A100 (not because it is always faster).
+- Weights: 4.2B × 2 ≈ **8.4 GB** — fits easily.
+- Data: 2,000 pairs × 6 languages = **12,000** pairs.
+- ~600 tokens/pair → **7.2M** tokens/epoch × 3 epochs = **21.6M** tokens.
+- GPU budget: **336** hours.
+- FLOPs per token: forward **2P**, backward **4P**; +**2P** if gradient checkpointing.
+  - Without checkpointing: `6 × 4.2e9 × 21.6e6` → **5.44×10¹⁷** → **~1.94 h**
+  - With checkpointing: `8 × 4.2e9 × 21.6e6` → **7.26×10¹⁷** → **~2.58 h**
+- Peak 312 TFLOP/s × ~25% MFU → plan **2–3 hours** per run.
 
----
+### Prompt cost
 
-### Success metric with a numeric threshold
-On a held-out, blinded Hindi and Kannada evaluation set, require:
-- At least 70% preference for the adapted model over the original on naturalness and conversational tone.
-- At least 95% semantic preservation, with no material factual additions, omissions or changes.
-- No more than a 2-percentage-point regression on the existing general evaluation suite.
+- Few-shot style prompt ~1k tokens ≈ **109 MiB** KV per active request.
+- Short instruction ~100 tokens ≈ **11 MiB**. Prefer the short form if it works.
 
-Launch scope is Hindi and Kannada only. The other four ship only with a flag labelled unverified, if must.
+### Reviewer
 
----
+- Capacity: 10 h/week × 3 weeks = **30 h**.
+- Pairwise ~45 s (80/h); audit ~2 min (30/h).
+- 1,200 pairwise + 400 audits = **15 + 13.3 = 28.3 h** → ~**1,600** judgements in 30 h (**13.3%** of the data).
 
-### Path choices
-- Primary choice -> LoRA SFT, bakes the style into the weights. It removes the ~1k-token few-shot prompt per request
-- Rewriter: A 1B FP16 model needs roughly 2GB for weights, so memory is not the issue. It adds a serial generation pass to every response, increases latency and creates another opportunity to alter facts, names or numbers. That is unnecessary when the main model can be adapted, and we are already constrained by reviewer time.
-- Prompt-only: It is cheap and reversible, so use it as the baseline. But, prompts alone may not provide a reliable behavioral change.
+**Bottleneck: reviewer time, not GPU.**
 
----
+## Success criteria (Hindi + Kannada, blinded)
 
-### Kill criterion
-- By day 7, audit 200 synthetic examples per reviewed language. 
-- Abandon SFT for either language if more than 15% fail the rubric through unnatural register, grammatical problems or semantic drift, or if material meaning errors exceed 5%. - Use prompt-only for that language only if it independently meets the success criteria; otherwise keep the existing behaviour.
+- ≥ **70%** preference on naturalness / conversational tone
+- ≥ **95%** semantic preservation (no material fact changes)
+- ≤ **2** pp regression on the general eval suite
 
----
+Launch Hindi and Kannada only. Other four ship as unverified if required.
 
-### First experiment I would run on Day 1
+## Path choice
 
-Generate casual prompt with 5 reviewer-fixed examples per language, spanning factual questions, explanations, instructions and short conversational turns.
-Run it against the model on 60 generated held-out prompts per language.
-The reviewer judges the blind pairs for Hindi and Kannada, scoring conversational naturalness and meaning preservation -> (60 + 60) * 45s
+- **Primary: LoRA SFT** — style in the weights; drops the ~1k-token few-shot prompt.
+- **Rewriter:** ~2 GB weights is fine, but adds a serial pass, latency, and another place to corrupt facts. Not worth it under reviewer scarcity.
+- **Prompt-only:** cheap baseline; may not hold a reliable style change alone.
 
-Decision points:
-- If >= 65% win and <=5% meaning error -> can ship with proper Prompt Engineering, SFT run is optional.
-- 50-65% -> proceed with the SFT run, using outputs from Prompt Engineering as the synthetic teacher data samples.
-- <=50% -> The prompts are bad. Raise the issue, and fix it now.
+## Kill criterion
+
+- By day 7, audit **150** synthetic examples per reviewed language (**2 × 150 × 2 min = 10 h** — week-1 reviewer capacity).
+- Drop SFT for a language if >**15%** fail the rubric, or meaning errors >**5%**.
+- Fall back to prompt-only only if it independently meets success criteria; otherwise keep current behaviour.
+
+## Day-1 experiment
+
+- 5 reviewer-fixed casual examples per language (mixed task types).
+- Run on **60** held-out prompts per language.
+- Blind pairwise review (Hindi + Kannada): naturalness + meaning → (60+60) × 45 s.
+
+**Decide**
+
+- ≥65% win and ≤5% meaning error → prompt engineering may ship; SFT optional
+- 50–65% → run SFT, using prompt outputs as teacher data
+- ≤50% → prompts are bad; fix before anything else

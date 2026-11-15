@@ -35,7 +35,7 @@ RESULT = "h7_lang_audit"
 # REPORT_v0.md section 1: the only two numbers it prints per language
 # (gpt2 tokenizer, sample corpus, macro per-line mean).  Kept verbatim —
 # every Delta in this experiment is against these.
-REPORT_V0 = {
+REPORT_V0_PRINTED = {
     "eng": {"language": "English", "fertility": 1.27, "tok_per_char": 0.226},
     "hin": {"language": "Hindi", "fertility": 7.45, "tok_per_char": 1.579},
 }
@@ -52,11 +52,11 @@ def baseline_for(lang: str):
     stems, so match on the code at the start of the key only — never a
     bare substring, which would pull 'eng' out of 'beng'.
     """
-    key = next((k for k in REPORT_V0 if lang == k or lang.startswith(k + "_")),
+    key = next((k for k in REPORT_V0_PRINTED if lang == k or lang.startswith(k + "_")),
                None)
     if key is None:
         return None
-    rep = REPORT_V0[key]
+    rep = REPORT_V0_PRINTED[key]
     return {
         "report_fertility": rep["fertility"],
         "report_tok_per_char": rep["tok_per_char"],
@@ -121,9 +121,9 @@ def run(corpus: dict, encoders: dict):
     print("derived         : chars/word = tok/word ÷ tok/char · "
           "codepoints/token = 1 ÷ tok/char · bytes/token: none in report")
     base_desc = " · ".join(
-        f"{REPORT_V0[k]['language']} {REPORT_V0[k]['fertility'] / REPORT_V0[k]['tok_per_char']:.2f}"
-        f" / {1.0 / REPORT_V0[k]['tok_per_char']:.2f}"
-        for k in REPORT_V0
+        f"{REPORT_V0_PRINTED[k]['language']} {REPORT_V0_PRINTED[k]['fertility'] / REPORT_V0_PRINTED[k]['tok_per_char']:.2f}"
+        f" / {1.0 / REPORT_V0_PRINTED[k]['tok_per_char']:.2f}"
+        for k in REPORT_V0_PRINTED
     )
     print(f"                  baseline values (chars/word / codepoints/token): {base_desc}")
 
@@ -258,7 +258,7 @@ def run(corpus: dict, encoders: dict):
 
     payload = {
         "tokenizers": list(encoders),
-        "report_v0": REPORT_V0,
+        "report_v0": REPORT_V0_PRINTED,
         "baseline": {lang: baseline_for(lang) for lang in corpus},
         "reproduction": reproduction,
         "results": results,

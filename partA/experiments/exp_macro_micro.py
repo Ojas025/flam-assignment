@@ -15,7 +15,7 @@ RESULT = "h3_macro_micro"
 def analyze(lines, encode):
     """Compute per-line macro ratios and pooled micro totals."""
     n = len(lines)
-    m_tpc = m_tps = m_tpb = m_fert = 0.0
+    m_tpc = m_tpb = m_fert = 0.0
     tot_tok = tot_chars = tot_bytes = tot_words = 0
 
     for line in lines:
@@ -37,6 +37,8 @@ def analyze(lines, encode):
         tot_words += nw
 
     mac_tpc, mic_tpc = m_tpc / n, tot_tok / tot_chars
+    # With one segment per line, macro TPS is the mean per-line token count
+    # and micro TPS is pooled tokens over pooled segments, so they coincide.
     mac_tps, mic_tps = tot_tok / n, tot_tok / n
     mac_tpb, mic_tpb = m_tpb / n, tot_tok / tot_bytes
     mac_fert, mic_fert = m_fert / n, tot_tok / tot_words
@@ -48,7 +50,7 @@ def analyze(lines, encode):
         "tpc_delta_pct": 100.0 * (mic_tpc / mac_tpc - 1.0),
         "macro_tps": mac_tps,
         "micro_tps": mic_tps,
-        "tps_delta_pct": 0.0,
+        "tps_delta_pct": 100.0 * (mic_tps / mac_tps - 1.0),
         "macro_tpb": mac_tpb,
         "micro_tpb": mic_tpb,
         "tpb_delta_pct": 100.0 * (mic_tpb / mac_tpb - 1.0),

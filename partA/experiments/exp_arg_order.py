@@ -8,9 +8,31 @@ table shows every ordered (base, comparison) pair from the same numbers.
 Run: python partA/run_experiments.py --experiment arg_order
 """
 
+import re
+
 from experiments import LANG_LABEL, save_fig
 
 RESULT = "h4_baseline"
+
+
+def cli_ratio(lines_by_lang, tokenizer, order):
+    """Run starter_kit/fertility.py with --corpus flags in the given order."""
+    import subprocess, sys, tempfile
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        for lang in order:
+            (tmp / f"{lang}.txt").write_text("\n".join(lines_by_lang[lang]) + "\n", encoding="utf-8")
+        cmd = [sys.executable, str(root / "starter_kit" / "fertility.py"), "--tokenizer", tokenizer]
+        for lang in order:
+            cmd += ["--corpus", f"{lang}={tmp / (lang + '.txt')}"]
+        out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    match = re.search(r"([A-Za-z]+) is ([0-9.]+)x the fertility of ([A-Za-z]+)", out)
+    if not match:
+        raise RuntimeError(f"unparsed fertility output: {out!r}")
+    return {"order": list(order), "ratio_parsed": float(match.group(2)),
+            "verdict": match.group(1) + " vs " + match.group(3)}
 
 
 def analyze(lines, encode):
@@ -69,7 +91,46 @@ def run(corpus: dict, encoders: dict):
                   f"{LANG_LABEL[other]} base: {LANG_LABEL[ek]} is {1 / fwd:.2f}x "
                   f"({'worse' if fwd < 1 else 'better'})")
 
-    return {"tokenizers": list(encoders), "results": all_rows}, all_rows
+    cli_runs = []
+    reciprocity_in_memory = 0.0
+    ek = next((lang for lang in corpus if "eng" in lang), None)
+    other = next((lang for lang in corpus if not (ek and "eng" in lang)), None)
+    if ek and other and encoders:
+        tok0 = next(iter(encoders))
+        fwd = fert[other] / fert[ek] if False else None
+    # in-memory reciprocity over all pairs
+    mem_errs = []
+    for tok, encode in encoders.items():
+        f = {lang: analyze(lines, encode) for lang, lines in corpus.items()}
+        for base_lang in f:
+            for cmp_lang in f:
+                if base_lang == cmp_lang:
+                    continue
+                # pair reciprocity: ratio(base->cmp) * ratio(cmp->base) == 1
+                pass
+    # compute max in-memory error across tokenizer/ordered pairs
+    mem_errs = []
+    for tok, encode in encoders.items():
+        f = {lang: analyze(lines, encode) for lang, lines in corpus.items()}
+        for a in f:
+            for b in f:
+                if a == b:
+                    continue
+                mem_errs.append(abs(f[a] / f[b] * f[b] / f[a] - 1.0))
+    reciprocity_in_memory = max(mem_errs) if mem_errs else 0.0
+
+    if ek and other and encoders:
+        tok0 = next(iter(encoders))
+        for order in ([ek, other], [other, ek]):
+            # map lang codes to corpus lang keys; cli_ratio expects lines_by_lang with those keys
+            cli_runs.append(cli_ratio(corpus, tok0, order))
+
+    payload = {"tokenizers": list(encoders), "results": all_rows,
+               "cli_runs": cli_runs,
+               "reciprocity_in_memory": reciprocity_in_memory,
+               "reciprocity_printed": (cli_runs[0]["ratio_parsed"] * cli_runs[1]["ratio_parsed"]) if len(cli_runs) >= 2 else 0.0}
+    print(f"→ CLI reciprocity: in-memory error {reciprocity_in_memory:.1e}, printed product {payload['reciprocity_printed']:.4f}")
+    return payload, all_rows
 
 
 def plot(payload):
